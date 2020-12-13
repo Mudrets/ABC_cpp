@@ -7,43 +7,48 @@
 int const countOfRooms = 30; //Количество комнат в отеле
 //Все время в миллисекундах
 int const minTravelTime = 100; //Минимальное время в дороге к отелю
-int const maxTravelTime = 35000; //Максимальное время в дороге к отелю
-int const oneDay = 5000; //Длительность одного дня
+int const maxTravelTime = 1000; //Максимальное время в дороге к отелю
+int const oneDay = 10000; //Длительность одного дня
 
 sem_t hotel; //Отель
 std::condition_variable newDay; //Условная переменная отвечающая за начало дня
 std::mutex messageMutex; //Мьютекс для корректного вывода
 std::mutex mtx; //Мьютекс для локера, передаваемого в условную переменную
 int countThreadLeaveFromHotel = 0; //Количество гостей, посетивших отель
+long long startDayTime;
+int travelTime;
 
 void clientThread(int id) {
     srand(id * time(0));
     //Имитируем долгую дорогу гостя к отелю
-    std::this_thread::sleep_for(std::chrono::milliseconds(rand() % (maxTravelTime -
-                                                                    minTravelTime) + minTravelTime));
+    travelTime += rand() % (maxTravelTime - minTravelTime) + minTravelTime;
+    std::this_thread::sleep_for(std::chrono::milliseconds(travelTime));
     messageMutex.lock();
-    printf("[Client %d]\tПрибыл в отель\n", id);
+    int countHours = time(0) - startDayTime + 12;
+    printf("[Client %d - %d:00]\tПрибыл в отель\n", id, countHours);
     messageMutex.unlock();
     int countFreeRooms;
     sem_getvalue(&hotel, &countFreeRooms); //Узнаем количество мест в отеле
     if (countFreeRooms <= 0) { //Если мест нет, то остаемся на улице
         messageMutex.lock();
-        printf("[Client %d]\tПридется ночевать на улице...\n", id);
+        printf("[Client %d - %d:00]\tПридется ночевать на улице...\n", id, countHours);
         messageMutex.unlock();
     }
     sem_wait(&hotel); //Ожидаем своей очереди
     messageMutex.lock();
-    printf("[Client %d]\tЗаселился в отель\n", id);
+    countHours = time(0) - startDayTime + 12;
+    printf("[Client %d - %d:00]\tЗаселился в отель\n", id, countHours);
     messageMutex.unlock();
     std::unique_lock<std::mutex> lock(mtx);
     newDay.wait(lock); //Ждем начала следующего дня
     lock.unlock();
     messageMutex.lock();
-    printf("[Client %d]\tГотовится к отъезду\n", id);
+    printf("[Client %d - 12:00]\tГотовится к отъезду\n", id);
     messageMutex.unlock();
     std::this_thread::sleep_for(std::chrono::milliseconds(rand() % oneDay)); //Имитируем сборы гостя
     messageMutex.lock();
-    printf("[Client %d]\tВыселяется из отеля\n", id);
+    countHours = time(0) - startDayTime + 12;
+    printf("[Client %d - %d:00]\tВыселяется из отеля\n", id, countHours);
     messageMutex.unlock();
     sem_post(&hotel);
     countThreadLeaveFromHotel++;
@@ -85,6 +90,7 @@ int main() {
         messageMutex.lock();
         printf("\n[Main Thread]\tДень %d\n", dayNum);
         messageMutex.unlock();
+        startDayTime = time(0);
         newDay.notify_all();
         std::this_thread::sleep_for(std::chrono::milliseconds(oneDay));
         dayNum++;
